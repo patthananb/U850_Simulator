@@ -120,10 +120,10 @@ export function createScene(container, sim) {
     controls.update(); renderer.render(scene, camera); labels.render(scene, camera);
   }
   function view(mode) {
-    controls.target.set(0, 170, -80);
+    controls.target.set(0, 270, -80);
     if (mode === 'top') { camera.position.set(0, 1500, -79); controls.target.set(0, 0, -80); }
     else if (mode === 'tool') { controls.target.set(...sim.tcp); camera.position.copy(controls.target).add(new THREE.Vector3(150, 130, 160)); }
-    else camera.position.set(1050, 890, 1140);
+    else camera.position.set(1150, 1000, 1240);
     controls.update();
   }
   new ResizeObserver(() => { const w = container.clientWidth, h = container.clientHeight; if (!w || !h) return; camera.aspect = w / h; camera.updateProjectionMatrix(); renderer.setSize(w, h); labels.setSize(w, h); }).observe(container);
