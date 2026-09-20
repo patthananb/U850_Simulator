@@ -1,4 +1,6 @@
 import * as THREE from 'three';
+import { STLLoader } from 'three/addons/loaders/STLLoader.js';
+import { BASE, forward, TOOL_LENGTH } from './kinematics.js';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { CSS2DRenderer, CSS2DObject } from 'three/addons/renderers/CSS2DRenderer.js';
 import { STATIONS, FLASH_POINT, CAMERA_POINT, NEST_POINT, slotPosition, stationPosition } from './simulation.js';
@@ -32,12 +34,17 @@ export function createScene(container, sim) {
   const reach = new THREE.LineLoop(new THREE.BufferGeometry().setFromPoints(Array.from({ length: 160 }, (_, i) => new THREE.Vector3(Math.cos(i / 160 * Math.PI * 2) * 850, -1, 220 + Math.sin(i / 160 * Math.PI * 2) * 850))), new THREE.LineDashedMaterial({ color: '#345261', dashSize: 12, gapSize: 8 })); reach.computeLineDistances(); scene.add(reach);
   box(150, 15, 150, '#52606a', [0, 6, 220]);
   for (const x of [-58, 58]) for (const z of [162, 278]) cylinder(7, 7, 6, jointMat, [x, 16, z]);
-  cylinder(62, 69, 110, pale, [0, 68, 220]);
-  cylinder(64, 64, 22, jointMat, [0, 123, 220]);
-  cylinder(46, 56, 215, pale, [0, 240, 220]);
-  const joints = Array.from({ length: 4 }, () => mesh(new THREE.SphereGeometry(42, 24, 16), jointMat));
-  const links = [mesh(new THREE.CylinderGeometry(35, 43, 1, 24), pale), mesh(new THREE.CylinderGeometry(28, 35, 1, 24), pale)];
-  const wrist = cylinder(28, 32, 65, pale, [0, 0, 0]);
+  const robotLinks = Array.from({ length: 7 }, () => { const group = new THREE.Group(); group.matrixAutoUpdate = false; scene.add(group); return group; });
+  const modelState = { status: 'loading' };
+  const loader = new STLLoader();
+  Promise.all(['link_base', 'link1', 'link2', 'link3', 'link4', 'link5', 'link6'].map(async (name, i) => {
+    const geometry = await loader.loadAsync(`/models/uf850/${name}.stl`);
+    geometry.computeVertexNormals();
+    const link = mesh(geometry, i === 6 ? toolMat : pale, robotLinks[i]);
+    link.scale.setScalar(1000); // Official STL coordinates are metres; workcell coordinates are mm.
+  })).then(() => { modelState.status = 'ready'; }).catch(error => {
+    modelState.status = 'error'; sim.pause(); console.error('Official U850 mesh could not load', error);
+  });
   const tool = new THREE.Group(); scene.add(tool);
   cylinder(23, 23, 16, jointMat, [0, 93, 0], tool);
   cylinder(17, 20, 36, toolMat, [0, 67, 0], tool);
@@ -103,25 +110,17 @@ export function createScene(container, sim) {
   }
   const pathGeometry = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(), new THREE.Vector3()]);
   const path = new THREE.Line(pathGeometry, new THREE.LineDashedMaterial({ color: '#7fdcbd', transparent: true, opacity: 0.55, dashSize: 9, gapSize: 7 })); scene.add(path);
-  const vertical = new THREE.Vector3(0, 1, 0);
-  function join(m, a, b) { m.position.copy(a).add(b).multiplyScalar(0.5); m.scale.y = a.distanceTo(b); m.quaternion.setFromUnitVectors(vertical, b.clone().sub(a).normalize()); }
   function update() {
-    const tcp = new THREE.Vector3(...sim.tcp), shoulder = new THREE.Vector3(0, 364, 220), wristPoint = tcp.clone().add(new THREE.Vector3(0, 135, 0));
-    // Conceptual two-link visualization. This is NOT the 850's six-axis inverse kinematics.
-    const direction = wristPoint.clone().sub(shoulder), length = direction.length(), a = 390, b = Math.hypot(426, 150);
-    const d = Math.max(Math.abs(a - b) + 0.001, Math.min(a + b - 0.001, length));
-    direction.normalize();
-    const along = (a * a - b * b + d * d) / (2 * d), height = Math.sqrt(Math.max(0, a * a - along * along));
-    const bend = vertical.clone().addScaledVector(direction, -vertical.dot(direction)).normalize();
-    const elbow = shoulder.clone().addScaledVector(direction, along).addScaledVector(bend, height);
-    join(links[0], shoulder, elbow); join(links[1], elbow, wristPoint);
-    [shoulder, elbow, wristPoint, tcp.clone().add(new THREE.Vector3(0, 102, 0))].forEach((p, i) => joints[i].position.copy(p));
-    joints[2].scale.setScalar(0.75); joints[3].scale.setScalar(0.55);
-    wrist.position.copy(tcp).add(new THREE.Vector3(0, 122, 0)); tool.position.copy(tcp);
+    const kinematics = forward(sim.robot.joints);
+    robotLinks[0].matrix.copy(BASE);
+    kinematics.frames.forEach((frame, i) => { robotLinks[i + 1].matrix.copy(BASE).multiply(frame); });
+    const flangeWorld = BASE.clone().multiply(kinematics.flange);
+    const tipFrame = flangeWorld.clone().multiply(new THREE.Matrix4().makeTranslation(0, 0, TOOL_LENGTH)).multiply(new THREE.Matrix4().makeRotationX(-Math.PI / 2));
+    tool.matrixAutoUpdate = false; tool.matrix.copy(tipFrame);
     const color = sim.vacuum === 'suction' ? '#62dab0' : sim.vacuum === 'blow' ? '#e4c478' : '#8296a3';
     cupMaterial.color.set(color); toolLight.material.color.set(color);
     sim.parts.forEach((p, i) => {
-      const pos = p.location === 'tool' ? [sim.tcp[0] + p.offset[0], sim.tcp[1], sim.tcp[2] + p.offset[1]] : p.location === 'nest' ? NEST_POINT : p.location === 'flasher' ? FLASH_POINT : slotPosition(p.location, p.slot, sim.config);
+      const pos = p.location === 'tool' ? new THREE.Vector3(p.offset[0], 0, p.offset[1]).applyMatrix4(tipFrame).toArray() : p.location === 'nest' ? NEST_POINT : p.location === 'flasher' ? FLASH_POINT : slotPosition(p.location, p.slot, sim.config);
       partMeshes[i].position.set(...pos);
     });
     const flashing = sim.phase?.label === 'Program & verify';
@@ -140,5 +139,5 @@ export function createScene(container, sim) {
   }
   new ResizeObserver(() => { const w = container.clientWidth, h = container.clientHeight; if (!w || !h) return; camera.aspect = w / h; camera.updateProjectionMatrix(); renderer.setSize(w, h); labels.setSize(w, h); }).observe(container);
   rebuild(); view('perspective');
-  return { update, rebuild, view };
+  return { update, rebuild, view, modelState };
 }

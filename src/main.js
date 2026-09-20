@@ -44,7 +44,7 @@ document.querySelector('#app').innerHTML = `
         <div id="viewport" aria-label="Interactive 3D robot workcell: drag to orbit, scroll to zoom"></div>
         <div class="viewport-toolbar"><span class="viewport-tag"><i></i> LIVE VIEW</span><div class="view-buttons"><button data-view="perspective" class="active">Perspective</button><button data-view="top">Top</button><button data-view="tool">Tool close-up</button></div></div>
         <div class="viewport-bottom"><span>DRAG TO ORBIT <b>·</b> SCROLL TO ZOOM</span><span>mm / Y UP</span></div>
-        <div class="model-note">Concept arm · no collision validation</div>
+        <div class="model-note">UFACTORY U850 · 6 DOF · no collision validation</div>
       </div>
       <div class="transport">
         <button class="primary" id="run">${icon.play} <span>Start batch</span></button>
@@ -89,6 +89,11 @@ document.querySelector('#app').innerHTML = `
         <p class="hint" id="vacuum-hint">Bench-test the tool before starting a batch.</p>
       </section>
       <section class="tcp-panel"><div class="panel-title"><span>TOOL POSITION</span><span>mm</span></div><div class="coordinates"><div>X <strong id="tcp-x">0.0</strong></div><div>Y <strong id="tcp-y">320.0</strong></div><div>Z <strong id="tcp-z">-100.0</strong></div></div><p class="hint">Scene coordinates · Y is vertical</p></section>
+      <section class="joint-panel"><div class="panel-title"><span>U850 / SIX JOINTS</span><span>deg</span></div>
+        <div class="joint-grid">${Array.from({length:6},(_,i)=>`<div><span>J${i+1}</span><strong id="joint-${i}">—</strong></div>`).join('')}</div>
+        <p class="hint" id="robot-state">Loading official U850 meshes…</p>
+        <p id="motion-error" class="error" role="alert"></p>
+      </section>
       <div class="batch-progress"><div><span>BATCH PROGRESS</span><strong id="batch-fraction">0 / 24</strong></div><div class="progress-track"><div id="batch-progress"></div></div></div>
     </aside>
   </main>
@@ -105,7 +110,12 @@ function renderUI() {
   $('status').textContent = { idle: 'Ready', running: 'Running', paused: 'Paused', complete: 'Batch complete' }[sim.status];
   $('status').className = `status-pill ${sim.status}`;
   $('run').innerHTML = `${running ? icon.pause : icon.play} <span>${running ? 'Pause' : sim.status === 'paused' ? 'Resume' : complete ? 'Batch complete' : 'Start batch'}</span>`;
-  $('run').disabled = complete; $('step').disabled = running || complete;
+  const meshReady = scene?.modelState.status === 'ready';
+  $('run').disabled = complete || Boolean(sim.motionFault) || !meshReady;
+  $('step').disabled = running || complete || Boolean(sim.motionFault) || !meshReady;
+  sim.robot.joints.forEach((angle, i) => { $(`joint-${i}`).textContent = `${(angle * 180 / Math.PI).toFixed(1)}°`; });
+  $('robot-state').textContent = meshReady ? `6-axis IK · position residual ${sim.robot.positionError.toFixed(3)} mm · nominal geometry` : scene?.modelState.status === 'error' ? 'Robot model failed to load. Reload to retry.' : 'Loading official U850 meshes…';
+  $('motion-error').textContent = sim.motionFault ?? '';
   document.querySelectorAll('#setup-form input, #apply').forEach(el => { el.disabled = running; });
   $('phase-label').textContent = complete ? 'All packages sorted' : sim.phase?.label ?? 'Ready to begin';
   $('phase-progress').style.width = `${sim.phase ? sim.phase.elapsed / sim.phase.duration * 100 : complete ? 100 : 0}%`;
@@ -144,7 +154,7 @@ $('setup-form').onsubmit = e => {
 document.querySelectorAll('[data-view]').forEach(el => { el.onclick = () => { scene?.view(el.dataset.view); document.querySelectorAll('[data-view]').forEach(button => button.classList.toggle('active', button === el)); }; });
 document.querySelectorAll('[data-vacuum]').forEach(el => { el.onclick = () => { sim.manualVacuum(el.dataset.vacuum); renderUI(); }; });
 $('export').onclick = () => {
-  const report = { schemaVersion: 2, simulationOnly: true, exportedAt: new Date().toISOString(), model: 'Concept visualization; not calibrated U850 kinematics', configuration: sim.config, status: sim.status, simulatedSeconds: sim.elapsed, results: { good: sim.good, fail: sim.fail }, parts: sim.parts, vision: sim.vision, events: [...sim.logs].reverse() };
+  const report = { schemaVersion: 2, simulationOnly: true, exportedAt: new Date().toISOString(), model: 'Official nominal U850 URDF; six-axis IK; no collision or dynamics validation', jointAnglesRadians: sim.robot.joints, ikResidual: { positionMm: sim.robot.positionError, orientationRad: sim.robot.angleError }, motionFault: sim.motionFault, configuration: sim.config, status: sim.status, simulatedSeconds: sim.elapsed, results: { good: sim.good, fail: sim.fail }, parts: sim.parts, vision: sim.vision, events: [...sim.logs].reverse() };
   const url = URL.createObjectURL(new Blob([JSON.stringify(report, null, 2)], { type: 'application/json' }));
   const a = document.createElement('a'); a.href = url; a.download = 'u850-simulation-run.json'; a.click(); setTimeout(() => URL.revokeObjectURL(url), 1000);
 };

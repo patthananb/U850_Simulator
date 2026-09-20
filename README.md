@@ -52,14 +52,32 @@ The vacuum bench-test buttons work before/after a batch, and lock while a cycle 
 
 ## Robot fidelity and implementation
 
-This is a **workflow and geometry prototype**, not a calibrated digital twin or a physical robot program. The visual arm uses a two-link geometric pose with a vertical tool. It does not implement the U850's full six-axis forward/inverse kinematics, joint limits, collision checks, orientation planning, dynamics, or verified trajectory timing. Its shoulder height and approximate link lengths are informed by [UFACTORY's published 850 kinematic parameters](https://docs.supportarticle.ufactory.cc/support_articles/developer/kinematic-and-dynamic-parameters/ufactory-850.html): 364 mm shoulder height, 390 mm upper link, and 426/150 mm offsets combined for the conceptual forearm. Other visual dimensions are schematic.
+The robot uses **UFACTORY's official nominal U850 six-revolute-joint URDF chain and visual STL meshes**, pinned to `xArm-Developer/xarm_ros` commit `aad7e1611c9c46eb719045414394bfdd42dcb0f8`. The original files, source record, and redistribution license are retained in `public/models/uf850/` and included in the build. Mesh shape is official; the uniform rendered finish and custom vacuum tool remain simplified.
 
-Motion follows eased Cartesian segments; the nominal 220 mm/s is used to set segment duration and is not a validated robot velocity. Simulated time excludes renderer lag and caps any individual animation-frame time step at 0.1 seconds. It is not a measured throughput estimate.
+Source: [official U850 model](https://github.com/xArm-Developer/xarm_ros/tree/aad7e1611c9c46eb719045414394bfdd42dcb0f8/xarm_description/urdf/uf850), [nominal origins](https://github.com/xArm-Developer/xarm_ros/blob/aad7e1611c9c46eb719045414394bfdd42dcb0f8/xarm_description/config/kinematics/default/uf850_default_kinematics.yaml), and [published DH parameters](https://docs.supportarticle.ufactory.cc/support_articles/developer/kinematic-and-dynamic-parameters/ufactory-850.html).
 
-The next fidelity step is importing the real robot/tool/fixture geometry, implementing the manufacturer's complete kinematic chain and joint constraints, and replacing the idealized grasp/socket behavior with the intended hardware protocol. No physical end-effector CAD or pneumatic circuit is produced by this version.
+The renderer and inverse kinematics use the same forward chain. Each joint rotates about its URDF-local Z axis after the fixed joint-origin transform. URDF roll/pitch/yaw uses Rz(yaw) Ry(pitch) Rx(roll). Source angular precision is retained. Robot-frame coordinates map to the scene as `(x, y, z) → (x, z, 220−y)` mm. The modeled flange-to-nozzle-tip offset is 101 mm along the flange's local +Z axis. The nozzle and any held IC are attached to the resulting flange transform, rather than drawn independently at a commanded Cartesian location.
+
+A damped least-squares solver controls all six pose components and keeps a fixed downward tool orientation (robot-frame roll π, pitch/yaw 0). Each motion update starts from the previous joint solution to preserve branch continuity. The solver enforces these nominal URDF limits:
+
+| Joint | Range (degrees, rounded) |
+| --- | --- |
+| J1 | −360 to +360 |
+| J2 | −132 to +132 |
+| J3 | −242 to +3.5 |
+| J4 | −360 to +360 |
+| J5 | −124 to +124 |
+| J6 | −360 to +360 |
+
+Acceptance requires flange position error below 0.02 mm and orientation error below 0.0002 radians. These are numerical solver tolerances, **not physical robot accuracy**. The joint panel shows all six joint angles and flange position residual. The tool position panel shows the commanded TCP in scene coordinates. Exported runs include joint angles in radians, solver residuals, and any motion fault.
+
+An unsolved target pauses the process before accepting that motion update or its pick/release action; reset the batch to clear the fault. The last accepted pose remains visible. There is no automatic recovery or global IK branch search. Model-load failure disables Start/Step rather than substituting a different arm.
+
+This is a nominal kinematic simulation, not a calibrated digital twin or physical robot program. It does not validate collisions, dynamics, payload, self-intersection, joint velocity/acceleration, or singularity avoidance. The custom tool, camera, trays, and nest still require real geometry and calibration. Motion follows eased Cartesian segments; 220 mm/s sets segment duration but is not an enforced robot speed. Simulated time excludes renderer lag and caps each frame at 0.1 seconds. Playback acceleration is visualization-only and throughput is not measured hardware performance.
 
 - `src/simulation.js`: deterministic process engine, inventory, settings validation, and vacuum states.
-- `src/scene.js`: Three.js workcell, orbit controls, and conceptual robot visualization.
+- `src/kinematics.js`: official nominal joint transforms, forward kinematics, limits, and numerical six-axis IK.
+- `src/scene.js`: Three.js workcell, official U850 link meshes, attached vacuum tool, and orbit controls.
 - `src/main.js`: setup, controls, progress, event log, and JSON export.
 - `tests/simulation.test.js`: process regression tests.
 
@@ -76,9 +94,9 @@ npm test
 Expected summary (exit code **0**):
 
 ```text
-ℹ tests 13
+ℹ tests 18
 ℹ suites 0
-ℹ pass 13
+ℹ pass 18
 ℹ fail 0
 ℹ cancelled 0
 ℹ skipped 0
@@ -98,7 +116,7 @@ Expected output (exit code **0**, hashes/sizes/timings vary):
 ```text
 vite v7.3.6 building client environment for production...
 transforming...
-✓ 10 modules transformed.
+✓ 12 modules transformed.
 rendering chunks...
 computing gzip size...
 dist/index.html
@@ -107,7 +125,7 @@ dist/assets/index-<hash>.js
 ✓ built in <duration>
 ```
 
-Vite emits a non-fatal warning because the Three.js-containing JavaScript bundle exceeds 500 kB before gzip (about 137 kB gzipped in the initial build).
+Vite emits a non-fatal warning because the Three.js-containing JavaScript bundle exceeds 500 kB before gzip (about 143 kB gzipped in the six-axis build).
 
 ## Camera QA ledger
 
@@ -139,3 +157,15 @@ The camera panel displays the last simulated measurement, not a live video feed:
 Camera regression checks: `npm test` exits 0 with **13 passed, 0 failed**. Added coverage verifies positive/negative/zero offsets, release before nozzle repositioning, invariant package position in the nest, centered re-picking, pause/reset behavior, invalid pickup offsets, and successful alignment before programming. `npm run build` exits 0; the existing bundle-size warning remains.
 
 After moving the nest beside the camera, all 13 tests and the build pass again. Browser acceptance: a one-part run at 4× measured X=+0.60, Z=−0.40 mm, completed the centered re-pick, displayed **Centered · verified** with ΔX=0.00 and ΔZ=0.00 mm, and finished with **1 good / 0 fail**. No browser errors or warnings were recorded. The top view confirms the adjacent fixtures. Default 4×6 trays and 1× playback were restored afterward.
+
+## Six-axis validation
+
+`npm test` exits **0** with **18 passed, 0 failed**. `npm run build` exits **0** (12 modules transformed; the documented non-fatal bundle-size warning remains). The original process tests now execute through IK, including one-/64-pocket batches and forced pass/fail routing. Five kinematic checks additionally verify:
+
+- URDF forward kinematics against an independent implementation of the published standard DH table at three different six-joint poses; agreement within 0.02 mm and 0.00005 radians, accounting for rounded source RPY constants.
+- Camera, nest, flasher, home, and outer tray corners: target TCP error below 0.05 mm, downward tool orientation, and all joint limits respected.
+- An unreachable 3-metre target fails to solve.
+- Failed motion leaves the accepted joint pose, TCP, phase time, and inventory unchanged and pauses the process.
+- A full two-part alignment/programming/sorting trajectory at 20 ms increments has no numerical branch jumps above 0.1 rad per sample and maintains TCP error below 0.05 mm. This continuity check does not establish hardware velocity limits.
+
+Browser acceptance with the official meshes: inspected the articulated arm and flange-attached tool in perspective view, then completed a one-part run at 4×. Expected/observed: **Centered · verified**, **1 good / 0 fail**, **Batch complete**, six joint readouts, and no browser warnings/errors. Restored 4×6 trays and 1× playback afterward. The mesh assets total approximately 2.4 MB and are served locally; no external model service is required.

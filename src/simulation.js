@@ -1,3 +1,5 @@
+import { inverse } from './kinematics.js';
+
 export const DEFAULTS = Object.freeze({ rows: 4, cols: 6, pitch: 18, packageSize: 7, nozzleSize: 3, flashTime: 3, blowTime: 0.25, passRate: 85, speed: 1, pickupOffsetX: 0.6, pickupOffsetZ: -0.4 });
 export const CAMERA_POINT = [-235, 140, -350];
 export const NEST_POINT = [-130, 55, -350];
@@ -31,6 +33,7 @@ export class Simulation {
     this.config = validateConfig({ ...DEFAULTS, ...config });
     this.parts = Array.from({ length: this.config.rows * this.config.cols }, (_, id) => ({ id, location: 'intake', slot: id, result: null, offset: [0, 0], alignment: null }));
     this.vision = { status: 'Waiting for package', measured: null, before: null };
+    this.robot = inverse(HOME); this.motionFault = null;
     this.status = 'idle'; this.tcp = [...HOME]; this.vacuum = 'off'; this.held = null;
     this.phase = null; this.queue = []; this.elapsed = 0; this.good = 0; this.fail = 0;
     this.logs = []; this.seed = 850; this.currentId = null; this.stepMode = false;
@@ -39,7 +42,7 @@ export class Simulation {
   log(message) { this.logs.unshift({ time: this.elapsed, message }); }
   random() { this.seed = (1664525 * this.seed + 1013904223) >>> 0; return this.seed / 4294967296; }
   start() {
-    if (this.status === 'complete') return;
+    if (this.status === 'complete' || this.motionFault) return;
     if (!this.phase) this.nextPart();
     if (this.phase) { this.status = 'running'; this.stepMode = false; }
   }
@@ -124,9 +127,17 @@ export class Simulation {
     let remaining = dt * this.config.speed;
     while (remaining > 1e-9 && this.phase && this.status === 'running') {
       const phase = this.phase, increment = Math.min(remaining, phase.duration - phase.elapsed);
+      const t = Math.min(1, (phase.elapsed + increment) / phase.duration);
+      if (phase.target) {
+        const target = lerp(phase.from, phase.target, t * t * (3 - 2 * t));
+        const solution = inverse(target, this.robot.joints, 40);
+        if (!solution.converged) {
+          this.motionFault = `Cannot solve six-axis pose during ${phase.label}. Reset the batch and adjust the layout.`;
+          this.status = 'paused'; this.log(this.motionFault); return;
+        }
+        this.robot = solution; this.tcp = target;
+      }
       remaining -= increment; phase.elapsed += increment; this.elapsed += increment;
-      const t = Math.min(1, phase.elapsed / phase.duration);
-      if (phase.target) this.tcp = lerp(phase.from, phase.target, t * t * (3 - 2 * t));
       if (t >= 1) {
         phase.action?.();
         this.advancePhase();
