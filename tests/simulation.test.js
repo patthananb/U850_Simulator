@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { Simulation, DEFAULTS, slotPosition } from '../src/simulation.js';
+import { Simulation, DEFAULTS, NEST_POINT, slotPosition } from '../src/simulation.js';
 
 function finish(sim) {
   sim.start();
@@ -11,6 +11,8 @@ function finish(sim) {
     assert.equal(sim.parts.filter(p => p.location === 'good').length, sim.good);
     assert.equal(sim.parts.filter(p => p.location === 'fail').length, sim.fail);
     if (sim.phase?.label === 'Program & verify') {
+      assert.equal(sim.parts[sim.currentId].alignment?.verified, true);
+      assert.deepEqual(sim.parts[sim.currentId].offset, [0, 0]);
       assert.equal(sim.vacuum, 'off');
       assert.equal(sim.held, null);
       assert.equal(sim.parts.filter(p => p.location === 'flasher').length, 1);
@@ -23,6 +25,37 @@ test('all-pass batch conserves every IC and fills unique good pockets', () => {
   assert.equal(sim.good, 24); assert.equal(sim.fail, 0);
   assert.deepEqual(sim.parts.map(p => p.slot), Array.from({ length: 24 }, (_, i) => i));
   assert.equal(sim.vacuum, 'off'); assert.equal(sim.held, null);
+});
+test('camera measures signed offsets; package stays fixed while nozzle is repositioned in the nest', () => {
+  for (const offset of [[0.6, -0.4], [-0.8, 0.5], [0, 0]]) {
+    const sim = new Simulation({ rows: 1, cols: 1, pickupOffsetX: offset[0], pickupOffsetZ: offset[1] });
+    sim.start();
+    for (let i = 0; i < 1000 && sim.parts[0].location !== 'nest'; i++) sim.update(0.02);
+    assert.equal(sim.parts[0].location, 'nest');
+    assert.equal(sim.held, null); assert.equal(sim.vacuum, 'off');
+    assert.deepEqual(sim.vision.measured, offset);
+    // The world-space package center lands at the nest despite an off-center grasp.
+    assert.ok(Math.abs(sim.phase.from[0] + offset[0] - NEST_POINT[0]) < 1e-9);
+    assert.ok(Math.abs(sim.phase.from[2] + offset[1] - NEST_POINT[2]) < 1e-9);
+    sim.pause(); const snapshot = JSON.stringify(sim); sim.update(100); assert.equal(JSON.stringify(sim), snapshot);
+    finish(sim);
+    assert.deepEqual(sim.parts[0].alignment, { before: offset, after: [0, 0], verified: true });
+  }
+});
+test('offset changes only on centered re-pick, and reset clears camera measurements', () => {
+  const sim = new Simulation({ rows: 1, cols: 1 }); sim.start();
+  for (let i = 0; i < 1000 && sim.phase.label !== 'Re-pick centered package'; i++) sim.update(0.02);
+  assert.equal(sim.phase.label, 'Re-pick centered package');
+  assert.equal(sim.parts[0].location, 'nest');
+  assert.deepEqual(sim.parts[0].offset, [0.6, -0.4]);
+  assert.deepEqual(sim.tcp, NEST_POINT);
+  sim.update(0.4);
+  assert.equal(sim.parts[0].location, 'tool'); assert.deepEqual(sim.parts[0].offset, [0, 0]);
+  sim.reset(); assert.equal(sim.vision.measured, null); assert.equal(sim.vision.before, null);
+});
+test('offsets that put the nozzle outside the package are rejected', () => {
+  assert.throws(() => new Simulation({ pickupOffsetX: 3 }), /inside the package/);
+  assert.throws(() => new Simulation({ pickupOffsetZ: -3 }), /inside the package/);
 });
 test('all-fail batch sends every IC to the fail tray', () => {
   const sim = new Simulation({ passRate: 0 }); finish(sim);

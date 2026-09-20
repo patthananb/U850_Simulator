@@ -2,7 +2,7 @@
 
 A local, browser-based 3D concept simulator for an UFACTORY 850 workcell:
 
-**Intake tray → vacuum pickup → flasher → simulated programming result → good or fail tray.**
+**Intake tray → vacuum pickup → camera inspection → centered re-pick → camera verification → flasher → good or fail tray.**
 
 The custom tool has three mutually exclusive commands: **suction**, **blow-off**, and **off**. This application does not connect to a robot, programmer, valve, or other physical hardware.
 
@@ -39,11 +39,12 @@ Nozzle diameter must be smaller than the package. Pitch must leave at least 4 mm
 ## Process and vacuum behavior
 
 1. Approach an intake pocket, descend, establish suction, and attach its IC.
-2. Lift 100 mm, transfer to the flasher, and descend into the socket.
-3. Apply a timed blow-off pulse, detach the IC, and turn the tool off.
-4. Lift clear, simulate programming and verification, and produce a pass/fail result.
-5. Descend, establish suction, and retrieve the IC.
-6. Transfer to the next available pocket in the corresponding good or fail tray, blow off, turn the tool off, and retract.
+2. Lift clear and present the package to the desk-mounted upward camera. Measure the simulated X/Z offset from the calibrated nozzle center.
+3. Place the package in the alignment nest, release it, reposition the nozzle over its center, and re-pick. Return to the camera to verify centering, then transfer to the flasher.
+4. Apply a timed blow-off pulse, detach the IC, and turn the tool off.
+5. Lift clear, simulate programming and verification, and produce a pass/fail result.
+6. Descend, establish suction, and retrieve the IC.
+7. Transfer to the next available pocket in the corresponding good or fail tray, blow off, turn the tool off, and retract.
 
 Results use a deterministic pseudo-random sequence reset with each batch. The pass rate is a probability, not a guaranteed quota. Tests force 0% and 100% to exercise both routing paths. The flasher is an idealized open socket: no lid, clamp, electrical contact model, firmware image, or programmer protocol is implemented.
 
@@ -75,9 +76,9 @@ npm test
 Expected summary (exit code **0**):
 
 ```text
-ℹ tests 10
+ℹ tests 13
 ℹ suites 0
-ℹ pass 10
+ℹ pass 13
 ℹ fail 0
 ℹ cancelled 0
 ℹ skipped 0
@@ -125,4 +126,14 @@ Vite emits a non-fatal warning because the Three.js-containing JavaScript bundle
 
 After arranging the trays side by side, `npm test` still reports **10 passed, 0 failed** (exit 0), and `npm run build` succeeds (exit 0, same non-fatal bundle-size warning). The updated row layout was visually checked in the browser's top view.
 
-An additional engine run with the default seed/recipe and side-by-side tray layout produced **17 good**, **7 fail**, and **290.63 simulated seconds**. These are deterministic model outputs, not measured hardware performance.
+An additional engine run with the default seed/recipe with the camera alignment cycle produced **17 good**, **7 fail**, and **513.78 simulated seconds**. These are deterministic model outputs, not measured hardware performance.
+
+## Desk camera and centering
+
+An upward-looking camera module with a lens and ring light is mounted on the desk. Its inspection point is X=−235, Y=140, Z=−350 mm. The alignment nest holds a package with its top surface at Y=55 mm. Both fixtures are schematic.
+
+The pickup-offset controls inject a known package-center displacement relative to the nozzle (default X=+0.6, Z=−0.4 mm). The grasp model preserves this offset during motion. The robot places the package center at the nest center, turns suction off after a blow-off pulse, moves the empty nozzle to the package center, and re-picks it. Only this re-pick changes the relative offset to zero. A second inspection records the centered result before flashing.
+
+The camera panel displays the last simulated measurement, not a live video feed: green is the package outline/center and dashed amber is the calibrated nozzle reference. An actual upward camera may not see the nozzle behind the package; the reference here represents a prior nozzle calibration. Image right is +X and image down is +Z under the simulator's chosen camera convention. No image detection, camera calibration, lens distortion, lighting physics, rotational correction, measurement noise, or alignment-failure handling is implemented. Verification assumes ideal re-picking; zero residual is a model result, not a hardware accuracy claim. Export schema version 2 includes each part's before/after alignment result and the last inspection.
+
+Camera regression checks: `npm test` exits 0 with **13 passed, 0 failed**. Added coverage verifies positive/negative/zero offsets, release before nozzle repositioning, invariant package position in the nest, centered re-picking, pause/reset behavior, invalid pickup offsets, and successful alignment before programming. `npm run build` exits 0; the existing bundle-size warning remains.

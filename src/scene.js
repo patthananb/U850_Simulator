@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { CSS2DRenderer, CSS2DObject } from 'three/addons/renderers/CSS2DRenderer.js';
-import { STATIONS, FLASH_POINT, slotPosition, stationPosition } from './simulation.js';
+import { STATIONS, FLASH_POINT, CAMERA_POINT, NEST_POINT, slotPosition, stationPosition } from './simulation.js';
 
 const COLORS = { intake: '#71a6ff', good: '#62dab0', fail: '#ed997c', flasher: '#e4c478' };
 export function createScene(container, sim) {
@@ -56,6 +56,18 @@ export function createScene(container, sim) {
   const socket = box(8, 1, 8, '#252c30', [0, 68.5, 0], fixture);
   const flashLight = box(28, 4, 4, '#e4c478', [0, 28, 57], fixture);
   label('02 / FLASHER', [0, 100, -40], COLORS.flasher, fixture);
+  const cameraStation = new THREE.Group(); scene.add(cameraStation);
+  cameraStation.position.set(CAMERA_POINT[0], 0, CAMERA_POINT[2]);
+  box(85, 10, 85, '#536672', [0, 5, 0], cameraStation);
+  box(48, 36, 48, '#244458', [0, 28, 0], cameraStation);
+  cylinder(20, 20, 18, jointMat, [0, 55, 0], cameraStation);
+  cylinder(14, 14, 3, material('#53bfe3', 0.7, 0.2), [0, 65, 0], cameraStation);
+  const ring = mesh(new THREE.TorusGeometry(28, 4, 12, 48), material('#b8f4f6'), cameraStation);
+  ring.rotation.x = Math.PI / 2; ring.position.y = 64;
+  label('VISION / UPWARD CAMERA', [0, 95, -35], '#79ceef', cameraStation);
+  box(76, 43, 76, '#4b6069', [NEST_POINT[0], 21.5, NEST_POINT[2]]);
+  box(50, 10, 50, '#91a4a8', [NEST_POINT[0], 48, NEST_POINT[2]]);
+  label('ALIGNMENT NEST', [NEST_POINT[0], 90, NEST_POINT[2] - 35], '#79ceef');
   let stationGroup = new THREE.Group(); scene.add(stationGroup);
   let partMeshes = [];
   function disposeGroup(group) {
@@ -109,7 +121,7 @@ export function createScene(container, sim) {
     const color = sim.vacuum === 'suction' ? '#62dab0' : sim.vacuum === 'blow' ? '#e4c478' : '#8296a3';
     cupMaterial.color.set(color); toolLight.material.color.set(color);
     sim.parts.forEach((p, i) => {
-      const pos = p.location === 'tool' ? sim.tcp : p.location === 'flasher' ? FLASH_POINT : slotPosition(p.location, p.slot, sim.config);
+      const pos = p.location === 'tool' ? [sim.tcp[0] + p.offset[0], sim.tcp[1], sim.tcp[2] + p.offset[1]] : p.location === 'nest' ? NEST_POINT : p.location === 'flasher' ? FLASH_POINT : slotPosition(p.location, p.slot, sim.config);
       partMeshes[i].position.set(...pos);
     });
     const flashing = sim.phase?.label === 'Program & verify';

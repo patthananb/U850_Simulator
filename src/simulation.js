@@ -1,4 +1,6 @@
-export const DEFAULTS = Object.freeze({ rows: 4, cols: 6, pitch: 18, packageSize: 7, nozzleSize: 3, flashTime: 3, blowTime: 0.25, passRate: 85, speed: 1 });
+export const DEFAULTS = Object.freeze({ rows: 4, cols: 6, pitch: 18, packageSize: 7, nozzleSize: 3, flashTime: 3, blowTime: 0.25, passRate: 85, speed: 1, pickupOffsetX: 0.6, pickupOffsetZ: -0.4 });
+export const CAMERA_POINT = [-235, 140, -350];
+export const NEST_POINT = [235, 55, -350];
 export const STATIONS = Object.freeze({ intake: [-152, 0, -150], good: [0, 0, -150], fail: [152, 0, -150], flasher: [0, 0, -350] });
 export const HOME = [0, 320, -100];
 export const FLASH_POINT = [0, 70, -350];
@@ -17,6 +19,7 @@ export function validateConfig(c) {
   if (![c.rows, c.cols].every(n => Number.isInteger(n) && n >= 1 && n <= 8)) throw new Error('Tray rows and columns must be integers from 1 to 8.');
   if (c.packageSize < 3 || c.packageSize > 16) throw new Error('Package size must be 3–16 mm.');
   if (c.nozzleSize < 1 || c.nozzleSize >= c.packageSize) throw new Error('Nozzle diameter must be at least 1 mm and smaller than the package.');
+  if (Math.max(Math.abs(c.pickupOffsetX), Math.abs(c.pickupOffsetZ)) > (c.packageSize - c.nozzleSize) / 2) throw new Error('Pickup offset must keep the nozzle inside the package outline. Reduce the offset or nozzle diameter.');
   if (c.pitch < c.packageSize + 4 || c.pitch > 25) throw new Error('Tray pitch must leave at least 4 mm between packages and be at most 25 mm.');
   if (c.flashTime < 0.5 || c.flashTime > 30 || c.blowTime < 0.1 || c.blowTime > 1) throw new Error('Flash time must be 0.5–30 s; blow-off must be 0.1–1 s.');
   if (c.passRate < 0 || c.passRate > 100 || c.speed < 0.25 || c.speed > 8) throw new Error('Pass rate or playback speed is outside its range.');
@@ -26,7 +29,8 @@ export class Simulation {
   constructor(config = {}) { this.reset(config); }
   reset(config = this.config) {
     this.config = validateConfig({ ...DEFAULTS, ...config });
-    this.parts = Array.from({ length: this.config.rows * this.config.cols }, (_, id) => ({ id, location: 'intake', slot: id, result: null }));
+    this.parts = Array.from({ length: this.config.rows * this.config.cols }, (_, id) => ({ id, location: 'intake', slot: id, result: null, offset: [0, 0], alignment: null }));
+    this.vision = { status: 'Waiting for package', measured: null, before: null };
     this.status = 'idle'; this.tcp = [...HOME]; this.vacuum = 'off'; this.held = null;
     this.phase = null; this.queue = []; this.elapsed = 0; this.good = 0; this.fail = 0;
     this.logs = []; this.seed = 850; this.currentId = null; this.stepMode = false;
@@ -51,15 +55,38 @@ export class Simulation {
     const part = this.parts.find(p => p.location === 'intake');
     if (!part) { this.status = 'complete'; this.currentId = null; this.vacuum = 'off'; this.log('Batch complete. All packages sorted.'); return; }
     this.currentId = part.id;
+    this.vision = { status: 'Waiting for package', measured: null, before: null };
     const pick = slotPosition('intake', part.slot, this.config);
+    const offset = [this.config.pickupOffsetX, this.config.pickupOffsetZ];
+    const pickupTool = [pick[0] - offset[0], pick[1], pick[2] - offset[1]];
+    const releaseTool = [NEST_POINT[0] - offset[0], NEST_POINT[1], NEST_POINT[2] - offset[1]];
     const above = p => [p[0], p[1] + 100, p[2]];
     const move = (label, group, target, action) => ({ label, group, target, action });
     const dwell = (label, group, duration, action, enter) => ({ label, group, duration, action, enter });
     this.queue = [
-      move('Approach intake', 'pick', above(pick)),
-      move('Lower to package', 'pick', pick),
-      dwell('Establish suction', 'pick', 0.35, () => { this.held = part.id; part.location = 'tool'; this.log(`IC ${part.id + 1}: picked from intake.`); }, () => { this.vacuum = 'suction'; }),
-      move('Lift package', 'transfer', above(pick)),
+      move('Approach intake', 'pick', above(pickupTool)),
+      move('Lower to package', 'pick', pickupTool),
+      dwell('Establish suction', 'pick', 0.35, () => { this.held = part.id; part.location = 'tool'; part.offset = [...offset]; this.log(`IC ${part.id + 1}: picked from intake.`); }, () => { this.vacuum = 'suction'; }),
+      move('Lift package', 'align', above(pickupTool)),
+      move('Move over desk camera', 'align', CAMERA_POINT),
+      dwell('Measure package center', 'align', 0.7, () => {
+        this.vision = { status: 'Offset measured · re-pick required', measured: [...part.offset], before: [...part.offset] };
+        this.log(`IC ${part.id + 1}: camera offset X ${part.offset[0].toFixed(2)}, Z ${part.offset[1].toFixed(2)} mm (simulated).`);
+      }),
+      move('Approach alignment nest', 'align', above(releaseTool)),
+      move('Place package in alignment nest', 'align', releaseTool),
+      dwell('Release for centering', 'align', this.config.blowTime, () => { this.held = null; part.location = 'nest'; this.vacuum = 'off'; }, () => { this.vacuum = 'blow'; }),
+      move('Lift nozzle clear', 'align', above(releaseTool)),
+      move('Align nozzle with package center', 'align', above(NEST_POINT)),
+      move('Lower centered nozzle', 'align', NEST_POINT),
+      dwell('Re-pick centered package', 'align', 0.35, () => { this.held = part.id; part.location = 'tool'; part.offset = [0, 0]; }, () => { this.vacuum = 'suction'; }),
+      move('Lift centered package', 'align', above(NEST_POINT)),
+      move('Return to camera for verification', 'align', CAMERA_POINT),
+      dwell('Verify nozzle centering', 'align', 0.7, () => {
+        this.vision.measured = [...part.offset]; this.vision.status = 'Centered · verified';
+        part.alignment = { before: [...this.vision.before], after: [...part.offset], verified: true };
+        this.log(`IC ${part.id + 1}: centered under nozzle; camera verified 0.00 mm offset (ideal simulation).`);
+      }),
       move('Move to flasher', 'transfer', above(FLASH_POINT)),
       move('Seat in socket', 'transfer', FLASH_POINT),
       dwell('Release into socket', 'transfer', this.config.blowTime, () => { this.held = null; part.location = 'flasher'; this.vacuum = 'off'; }, () => { this.vacuum = 'blow'; }),
