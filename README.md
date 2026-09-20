@@ -1,10 +1,40 @@
-# U850 IC workcell simulator
+# U850 Simulator
 
 A local, browser-based 3D concept simulator for an UFACTORY 850 workcell:
 
 **Intake tray → vacuum pickup → camera inspection → centered re-pick → camera verification → flasher → good or fail tray.**
 
 The custom tool has three mutually exclusive commands: **suction**, **blow-off**, and **off**. This application does not connect to a robot, programmer, valve, or other physical hardware.
+
+## Screenshots
+
+### Six-axis robot and workcell
+
+Official UFACTORY U850 geometry, custom vacuum tool, three trays, flasher, upward camera, and adjacent alignment nest.
+
+![Six-axis U850 robot and workcell overview](docs/screenshots/overview.png)
+
+### Workcell layout
+
+Top view of the side-by-side intake, good, and fail trays, with the camera, alignment nest, and flasher behind them.
+
+![Top view of the workcell](docs/screenshots/workcell-layout.png)
+
+### Camera alignment result
+
+A completed one-package demonstration: the simulated initial offset of X=+0.60 / Z=−0.40 mm is corrected by releasing and re-picking the package. The inspection panel reports zero residual in the ideal model, and the package is sorted into the good tray.
+
+![Verified camera alignment and completed one-package run](docs/screenshots/alignment-result.png)
+
+Screenshots captured from the running application on 2026-09-20. The overview/layout use the default 4×6 trays; the result uses 1×1 trays and 4× playback. These show simulated measurements, not physical robot accuracy.
+
+## Features
+
+- Official U850 visual meshes and six-axis inverse kinematics with joint limits and live J1–J6 readouts.
+- Adjustable HQFN package, vacuum nozzle, tray geometry, pickup offsets, and process timing.
+- Suction, blow-off, and off states with an automatic pick, align, program, and sort cycle.
+- Desk-mounted upward camera and neighboring alignment nest for simulated centering.
+- Pause/resume, phase stepping, playback speed, orbit/top/tool views, event logs, and JSON run export.
 
 ## Run locally
 
@@ -127,25 +157,6 @@ dist/assets/index-<hash>.js
 
 Vite emits a non-fatal warning because the Three.js-containing JavaScript bundle exceeds 500 kB before gzip (about 143 kB gzipped in the six-axis build).
 
-## Camera QA ledger
-
-- Initial embedded-browser check: the top of the arm is clipped by the viewport at the ready pose.
-- Source trace: the default perspective camera targets Y=170; its resize handler updates the aspect ratio correctly. The browser tooling exposes no interactive JavaScript debugger, so the investigation used source and numerical projection.
-- Hypotheses: (1) target too low, (2) distance too close, (3) incorrect aspect resize.
-- Disproof of an aspect-only explanation: projecting the elbow at aspect ratios 0.8 and 1.6 places its center at normalized Y=0.966 in both cases. Its 42 mm radius extends beyond the top. The camera's vertical framing, not only narrow layout, explains the clipping.
-- Adjustment: raise the target to Y=270 and increase camera distance. A fresh embedded-browser screenshot shows the complete ready-pose arm inside the frame. This agrees with the numerical projection and source trace.
-
-## Browser acceptance checks
-
-- Rendered the 3D scene in the embedded browser at its narrow default width; verified the camera adjustment visually.
-- Set rows/columns to 1, pass probability to 0%, and playback to 4×; ran the complete cycle through the UI. Expected and observed: intake **0**, good **0**, fail **1**, batch **1 / 1**, vacuum **OFF**, status **Batch complete**. The log contains pickup, failed simulated programming, placement into the fail tray, and completion. No browser warning/error logs were recorded.
-- Checked desktop layout bounds at a 1440 px viewport: panels fit within the document width (1436 px). The embedded screenshot surface cropped that temporary desktop viewport, so this was a DOM-boundary check rather than full desktop visual validation. Restored the normal viewport afterward.
-- Restored the default 4 × 6 recipe, 85% pass probability, 1× playback, and ready state for handoff.
-
-After arranging the trays side by side, `npm test` still reports **10 passed, 0 failed** (exit 0), and `npm run build` succeeds (exit 0, same non-fatal bundle-size warning). The updated row layout was visually checked in the browser's top view.
-
-An additional engine run with the default seed/recipe with the camera alignment cycle produced **17 good**, **7 fail**, and **434.32 simulated seconds**. These are deterministic model outputs, not measured hardware performance.
-
 ## Desk camera and centering
 
 An upward-looking camera module with a lens and ring light is mounted on the desk. Its inspection point is X=−235, Y=140, Z=−350 mm. The alignment nest is immediately beside the camera at X=−130, Y=55, Z=−350 mm (105 mm between centers, approximately 24.5 mm between fixture edges). Its package top surface is at Y=55 mm. Both fixtures are schematic.
@@ -154,7 +165,7 @@ The pickup-offset controls inject a known package-center displacement relative t
 
 The camera panel displays the last simulated measurement, not a live video feed: green is the package outline/center and dashed amber is the calibrated nozzle reference. An actual upward camera may not see the nozzle behind the package; the reference here represents a prior nozzle calibration. Image right is +X and image down is +Z under the simulator's chosen camera convention. No image detection, camera calibration, lens distortion, lighting physics, rotational correction, measurement noise, or alignment-failure handling is implemented. Verification assumes ideal re-picking; zero residual is a model result, not a hardware accuracy claim. Export schema version 2 includes each part's before/after alignment result and the last inspection.
 
-Camera regression checks: `npm test` exits 0 with **13 passed, 0 failed**. Added coverage verifies positive/negative/zero offsets, release before nozzle repositioning, invariant package position in the nest, centered re-picking, pause/reset behavior, invalid pickup offsets, and successful alignment before programming. `npm run build` exits 0; the existing bundle-size warning remains.
+The camera milestone originally passed 13 tests; the current complete suite has 18 tests. Added coverage verifies positive/negative/zero offsets, release before nozzle repositioning, invariant package position in the nest, centered re-picking, pause/reset behavior, invalid pickup offsets, and successful alignment before programming. `npm run build` exits 0; the existing bundle-size warning remains.
 
 After moving the nest beside the camera, all 13 tests and the build pass again. Browser acceptance: a one-part run at 4× measured X=+0.60, Z=−0.40 mm, completed the centered re-pick, displayed **Centered · verified** with ΔX=0.00 and ΔZ=0.00 mm, and finished with **1 good / 0 fail**. No browser errors or warnings were recorded. The top view confirms the adjacent fixtures. Default 4×6 trays and 1× playback were restored afterward.
 
@@ -169,3 +180,12 @@ After moving the nest beside the camera, all 13 tests and the build pass again. 
 - A full two-part alignment/programming/sorting trajectory at 20 ms increments has no numerical branch jumps above 0.1 rad per sample and maintains TCP error below 0.05 mm. This continuity check does not establish hardware velocity limits.
 
 Browser acceptance with the official meshes: inspected the articulated arm and flange-attached tool in perspective view, then completed a one-part run at 4×. Expected/observed: **Centered · verified**, **1 good / 0 fail**, **Batch complete**, six joint readouts, and no browser warnings/errors. Restored 4×6 trays and 1× playback afterward. The mesh assets total approximately 2.4 MB and are served locally; no external model service is required.
+
+## Documentation
+
+- [Historical validation notes](docs/validation-history.md)
+- [Screenshot files and capture instructions](docs/screenshots/README.md)
+- [Official model provenance](public/models/uf850/SOURCE.md)
+- [UFACTORY model license](public/models/uf850/LICENSE)
+
+The robot assets retain their upstream license. This project is not an official UFACTORY product.
