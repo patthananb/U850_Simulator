@@ -66,6 +66,44 @@ Package width, nozzle diameter, tray rows/columns/pitch, programming duration, b
 
 Nozzle diameter must be smaller than the package. Pitch must leave at least 4 mm between packages. These are simple concept-model constraints, not mechanical design validation. The 2 mm package thickness, socket geometry, vacuum tool shape, approach clearances, and fixture positions are placeholders awaiting actual part drawings and CAD.
 
+## Workflow flowchart
+
+The diagram follows the implemented simulation cycle. Suction holds the IC during transport; a timed blow-off pulse releases it, followed by the off state.
+
+```mermaid
+flowchart TD
+    Start([Start batch]) --> Intake{IC remaining in intake?}
+    Intake -- No --> Complete([Batch complete / vacuum off])
+    Intake -- Yes --> Pick["Approach and lower to intake pocket<br/>Suction on / pick IC / lift"]
+    Pick --> Camera["Move over upward camera<br/>Measure package-center offset X/Z"]
+    Camera --> Nest["Place IC in adjacent alignment nest<br/>Blow off / release / vacuum off"]
+    Nest --> Center["Lift empty nozzle<br/>Move over package center / lower"]
+    Center --> Repick["Suction on / re-pick centered IC / lift"]
+    Repick --> Verify["Return to upward camera<br/>Verify centering in ideal simulation"]
+    Verify --> Load["Move to flasher / seat IC in socket<br/>Blow off / release / vacuum off"]
+    Load --> Program["Lift nozzle clear<br/>Simulate programming and verification"]
+    Program --> Result["Record simulated pass or fail result"]
+    Result --> Retrieve["Lower to socket<br/>Suction on / retrieve IC / lift"]
+    Retrieve --> Passed{Programming passed?}
+    Passed -- Yes --> Good["Move to next empty GOOD pocket / lower"]
+    Passed -- No --> Fail["Move to next empty FAIL pocket / lower"]
+    Good --> Release["Blow off / release IC / vacuum off<br/>Update tray count"]
+    Fail --> Release
+    Release --> Home["Retract tool / return to ready position"]
+    Home --> Intake
+
+    classDef vision fill:#183b4b,stroke:#79ceef,color:#ffffff
+    classDef good fill:#1c4838,stroke:#78e0b8,color:#ffffff
+    classDef fail fill:#542e26,stroke:#ed997c,color:#ffffff
+    class Camera,Verify vision
+    class Good,Complete good
+    class Fail fail
+```
+
+**Simulation behavior:** every IC goes through the nest and re-pick sequence, even if its initial offset is zero. Centering verification assumes an ideal successful re-pick; there is no alignment-failure or retry branch. Programming pass/fail is generated using the configured probability and repeatable random sequence.
+
+**Controls and motion faults:** Pause freezes the cycle and retains the current vacuum state; Resume continues it. Step phase completes one phase and then pauses. Every Cartesian motion update is checked by the six-axis IK solver. If it cannot find an accepted pose within joint limits, the simulation pauses before accepting that update or its associated action, retains the last accepted pose and vacuum state, and requires a batch reset before restarting. Reset clears all progress and restores the intake inventory.
+
 ## Process and vacuum behavior
 
 1. Approach an intake pocket, descend, establish suction, and attach its IC.
