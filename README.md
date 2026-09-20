@@ -126,14 +126,16 @@ Vite emits a non-fatal warning because the Three.js-containing JavaScript bundle
 
 After arranging the trays side by side, `npm test` still reports **10 passed, 0 failed** (exit 0), and `npm run build` succeeds (exit 0, same non-fatal bundle-size warning). The updated row layout was visually checked in the browser's top view.
 
-An additional engine run with the default seed/recipe with the camera alignment cycle produced **17 good**, **7 fail**, and **513.78 simulated seconds**. These are deterministic model outputs, not measured hardware performance.
+An additional engine run with the default seed/recipe with the camera alignment cycle produced **17 good**, **7 fail**, and **434.32 simulated seconds**. These are deterministic model outputs, not measured hardware performance.
 
 ## Desk camera and centering
 
-An upward-looking camera module with a lens and ring light is mounted on the desk. Its inspection point is X=−235, Y=140, Z=−350 mm. The alignment nest holds a package with its top surface at Y=55 mm. Both fixtures are schematic.
+An upward-looking camera module with a lens and ring light is mounted on the desk. Its inspection point is X=−235, Y=140, Z=−350 mm. The alignment nest is immediately beside the camera at X=−130, Y=55, Z=−350 mm (105 mm between centers, approximately 24.5 mm between fixture edges). Its package top surface is at Y=55 mm. Both fixtures are schematic.
 
 The pickup-offset controls inject a known package-center displacement relative to the nozzle (default X=+0.6, Z=−0.4 mm). The grasp model preserves this offset during motion. The robot places the package center at the nest center, turns suction off after a blow-off pulse, moves the empty nozzle to the package center, and re-picks it. Only this re-pick changes the relative offset to zero. A second inspection records the centered result before flashing.
 
 The camera panel displays the last simulated measurement, not a live video feed: green is the package outline/center and dashed amber is the calibrated nozzle reference. An actual upward camera may not see the nozzle behind the package; the reference here represents a prior nozzle calibration. Image right is +X and image down is +Z under the simulator's chosen camera convention. No image detection, camera calibration, lens distortion, lighting physics, rotational correction, measurement noise, or alignment-failure handling is implemented. Verification assumes ideal re-picking; zero residual is a model result, not a hardware accuracy claim. Export schema version 2 includes each part's before/after alignment result and the last inspection.
 
 Camera regression checks: `npm test` exits 0 with **13 passed, 0 failed**. Added coverage verifies positive/negative/zero offsets, release before nozzle repositioning, invariant package position in the nest, centered re-picking, pause/reset behavior, invalid pickup offsets, and successful alignment before programming. `npm run build` exits 0; the existing bundle-size warning remains.
+
+After moving the nest beside the camera, all 13 tests and the build pass again. Browser acceptance: a one-part run at 4× measured X=+0.60, Z=−0.40 mm, completed the centered re-pick, displayed **Centered · verified** with ΔX=0.00 and ΔZ=0.00 mm, and finished with **1 good / 0 fail**. No browser errors or warnings were recorded. The top view confirms the adjacent fixtures. Default 4×6 trays and 1× playback were restored afterward.

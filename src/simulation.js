@@ -1,6 +1,6 @@
 export const DEFAULTS = Object.freeze({ rows: 4, cols: 6, pitch: 18, packageSize: 7, nozzleSize: 3, flashTime: 3, blowTime: 0.25, passRate: 85, speed: 1, pickupOffsetX: 0.6, pickupOffsetZ: -0.4 });
 export const CAMERA_POINT = [-235, 140, -350];
-export const NEST_POINT = [235, 55, -350];
+export const NEST_POINT = [-130, 55, -350];
 export const STATIONS = Object.freeze({ intake: [-152, 0, -150], good: [0, 0, -150], fail: [152, 0, -150], flasher: [0, 0, -350] });
 export const HOME = [0, 320, -100];
 export const FLASH_POINT = [0, 70, -350];
