@@ -12,19 +12,19 @@ The custom tool has three mutually exclusive commands: **suction**, **blow-off**
 
 Official UFACTORY U850 geometry, custom vacuum tool, three trays, flasher, upward camera, and adjacent alignment nest.
 
-![Six-axis U850 robot and workcell overview](docs/screenshots/overview.png)
+![Six-axis U850 robot and workcell overview](docs/screenshots/overview.jpg)
 
 ### Workcell layout
 
 Top view of the side-by-side intake, good, and fail trays, with the camera, alignment nest, and flasher behind them.
 
-![Top view of the workcell](docs/screenshots/workcell-layout.png)
+![Top view of the workcell](docs/screenshots/workcell-layout.jpg)
 
 ### Camera alignment result
 
 A completed one-package demonstration: the simulated initial offset of X=+0.60 / Z=−0.40 mm is corrected by releasing and re-picking the package. The inspection panel reports zero residual in the ideal model, and the package is sorted into the good tray.
 
-![Verified camera alignment and completed one-package run](docs/screenshots/alignment-result.png)
+![Verified camera alignment and completed one-package run](docs/screenshots/alignment-result.jpg)
 
 Screenshots captured from the running application on 2026-09-20. The overview/layout use the default 4×6 trays; the result uses 1×1 trays and 4× playback. These show simulated measurements, not physical robot accuracy.
 
