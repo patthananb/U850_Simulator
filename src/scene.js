@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { CSS2DRenderer, CSS2DObject } from 'three/addons/renderers/CSS2DRenderer.js';
-import { STATIONS, FLASH_POINT, slotPosition } from './simulation.js';
+import { STATIONS, FLASH_POINT, slotPosition, stationPosition } from './simulation.js';
 
 const COLORS = { intake: '#71a6ff', good: '#62dab0', fail: '#ed997c', flasher: '#e4c478' };
 export function createScene(container, sim) {
@@ -66,7 +66,7 @@ export function createScene(container, sim) {
     disposeGroup(stationGroup); stationGroup = new THREE.Group(); scene.add(stationGroup); partMeshes = [];
     const cfg = sim.config, width = cfg.cols * cfg.pitch + 14, depth = cfg.rows * cfg.pitch + 14;
     ['intake', 'good', 'fail'].forEach((name, index) => {
-      const [x, , z] = STATIONS[name];
+      const [x, , z] = stationPosition(name, cfg);
       box(width, 12, depth, '#17232c', [x, 6, z], stationGroup);
       box(width, 2, 3, COLORS[name], [x, 13, z + depth / 2], stationGroup);
       label(`${index === 0 ? '01' : index + 2} / ${name.toUpperCase()}`, [x, 46, z + depth / 2 + 14], COLORS[name], stationGroup);

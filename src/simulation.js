@@ -1,10 +1,15 @@
 export const DEFAULTS = Object.freeze({ rows: 4, cols: 6, pitch: 18, packageSize: 7, nozzleSize: 3, flashTime: 3, blowTime: 0.25, passRate: 85, speed: 1 });
-export const STATIONS = Object.freeze({ intake: [-270, 0, -190], good: [260, 0, -230], fail: [290, 0, 20], flasher: [0, 0, -350] });
+export const STATIONS = Object.freeze({ intake: [-152, 0, -150], good: [0, 0, -150], fail: [152, 0, -150], flasher: [0, 0, -350] });
 export const HOME = [0, 320, -100];
 export const FLASH_POINT = [0, 70, -350];
 const lerp = (a, b, t) => a.map((v, i) => v + (b[i] - v) * t);
+export function stationPosition(station, config) {
+  const [x, y, z] = STATIONS[station];
+  // Keep a 30 mm edge-to-edge gap as the tray width changes.
+  return [station === 'flasher' ? x : Math.sign(x) * (config.cols * config.pitch + 14 + 30), y, z];
+}
 export function slotPosition(station, index, config) {
-  const [x, , z] = STATIONS[station];
+  const [x, , z] = stationPosition(station, config);
   return [x + (index % config.cols - (config.cols - 1) / 2) * config.pitch, 25, z + (Math.floor(index / config.cols) - (config.rows - 1) / 2) * config.pitch];
 }
 export function validateConfig(c) {

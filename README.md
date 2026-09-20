@@ -32,7 +32,7 @@ Edit the recipe while idle or paused, then click **Apply & reset batch**. Applyi
 | Blow-off pulse | 0.25 simulated seconds |
 | Simulated pass probability | 85% per IC |
 
-Package width, nozzle diameter, tray rows/columns/pitch, programming duration, blow-off duration, pass probability, and playback speed are adjustable. All three trays share one geometry. Tray and flasher positions are fixed in `src/simulation.js`. The scene uses millimetres with **Y up**; these are not robot-controller coordinates.
+Package width, nozzle diameter, tray rows/columns/pitch, programming duration, blow-off duration, pass probability, and playback speed are adjustable. All three trays share one geometry. The trays sit side by side in intake → good → fail order along the X axis, with a 30 mm edge-to-edge gap that stays constant as tray width changes. Their common Z position is −150 mm; the flasher sits behind them at Z=−350 mm. Tray placement and robot pocket targets share `stationPosition` in `src/simulation.js`. The scene uses millimetres with **Y up**; these are not robot-controller coordinates.
 
 Nozzle diameter must be smaller than the package. Pitch must leave at least 4 mm between packages. These are simple concept-model constraints, not mechanical design validation. The 2 mm package thickness, socket geometry, vacuum tool shape, approach clearances, and fixture positions are placeholders awaiting actual part drawings and CAD.
 
@@ -123,4 +123,6 @@ Vite emits a non-fatal warning because the Three.js-containing JavaScript bundle
 - Checked desktop layout bounds at a 1440 px viewport: panels fit within the document width (1436 px). The embedded screenshot surface cropped that temporary desktop viewport, so this was a DOM-boundary check rather than full desktop visual validation. Restored the normal viewport afterward.
 - Restored the default 4 × 6 recipe, 85% pass probability, 1× playback, and ready state for handoff.
 
-An additional engine run with the default seed/recipe produced **17 good**, **7 fail**, and **335.43 simulated seconds**. These are deterministic model outputs, not measured hardware performance.
+After arranging the trays side by side, `npm test` still reports **10 passed, 0 failed** (exit 0), and `npm run build` succeeds (exit 0, same non-fatal bundle-size warning). The updated row layout was visually checked in the browser's top view.
+
+An additional engine run with the default seed/recipe and side-by-side tray layout produced **17 good**, **7 fail**, and **290.63 simulated seconds**. These are deterministic model outputs, not measured hardware performance.
