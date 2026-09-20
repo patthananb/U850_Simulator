@@ -208,7 +208,7 @@ To preview the production build locally:
 
 ```bash
 npm run build
-npx vite preview --host 127.0.0.1
+npx vite preview --host 127.0.0.1 --base /U850_Simulator/
 ```
 
 Open `http://127.0.0.1:4173/U850_Simulator/`. Expected: the six-axis robot meshes load, Start batch is enabled, and the simulator runs under the same subpath used by Pages. The preview command stays running until stopped with Ctrl+C.
