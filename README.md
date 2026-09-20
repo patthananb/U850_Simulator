@@ -189,3 +189,28 @@ Browser acceptance with the official meshes: inspected the articulated arm and f
 - [UFACTORY model license](public/models/uf850/LICENSE)
 
 The robot assets retain their upstream license. This project is not an official UFACTORY product.
+
+## Deploy to GitHub Pages
+
+This repository includes a manually triggered deployment workflow. Pushing code alone does not publish the site.
+
+1. Push the completed project to the `main` branch of `patthananb/U850_Simulator`.
+2. Open [repository Pages settings](https://github.com/patthananb/U850_Simulator/settings/pages).
+3. Under **Build and deployment**, set **Source** to **GitHub Actions**.
+4. Open [Actions](https://github.com/patthananb/U850_Simulator/actions), select **Deploy to GitHub Pages**, then click **Run workflow**. Choose **main** and confirm **Run workflow**.
+5. Wait for both **build** and **deploy** to finish successfully. Build installs locked dependencies, runs the 18 tests, builds the app, and uploads `dist/`.
+6. Open [the deployed simulator](https://patthananb.github.io/U850_Simulator/). This URL works only after a successful deployment.
+7. For future updates, push the changes and run the workflow again. If a run fails, open its failed step to see the error.
+
+`vite.config.js` sets the production base to `/U850_Simulator/`; development stays at `/`. Robot meshes load relative to Vite's base, so they work under the repository subpath. Change the base if the repository is renamed or a custom domain is added. The workflow deploys only from `main` and preserves the model license in the published files.
+
+To preview the production build locally:
+
+```bash
+npm run build
+npx vite preview --host 127.0.0.1
+```
+
+Open `http://127.0.0.1:4173/U850_Simulator/`. Expected: the six-axis robot meshes load, Start batch is enabled, and the simulator runs under the same subpath used by Pages. The preview command stays running until stopped with Ctrl+C.
+
+Pages preparation validation: `npm test` returned 18 passed / 0 failed (exit 0), and `npm run build` returned exit 0 with 12 modules transformed and the existing bundle-size warning. The production preview returned HTTP 200 for `/U850_Simulator/`, the base and final-link STL files, and the model license. The generated HTML references `/U850_Simulator/assets/`.

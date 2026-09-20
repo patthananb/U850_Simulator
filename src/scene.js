@@ -38,7 +38,7 @@ export function createScene(container, sim) {
   const modelState = { status: 'loading' };
   const loader = new STLLoader();
   Promise.all(['link_base', 'link1', 'link2', 'link3', 'link4', 'link5', 'link6'].map(async (name, i) => {
-    const geometry = await loader.loadAsync(`/models/uf850/${name}.stl`);
+    const geometry = await loader.loadAsync(`${import.meta.env.BASE_URL}models/uf850/${name}.stl`);
     geometry.computeVertexNormals();
     const link = mesh(geometry, i === 6 ? toolMat : pale, robotLinks[i]);
     link.scale.setScalar(1000); // Official STL coordinates are metres; workcell coordinates are mm.
