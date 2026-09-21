@@ -2,11 +2,19 @@
 
 A local, browser-based 3D concept simulator for an UFACTORY 850 workcell:
 
-**Intake tray → vacuum pickup → camera inspection → centered re-pick → camera verification → flasher → good or fail tray.**
+**Intake tray → wrist depth-camera inspection → vacuum pickup → camera inspection → centered re-pick → camera verification → flasher → good or fail tray.**
 
 The custom tool has three mutually exclusive commands: **suction**, **blow-off**, and **off**. This application does not connect to a robot, programmer, valve, or other physical hardware.
 
+Vendor design and installation brief: [Robot_spec.md](Robot_spec.md).
+
 ## Screenshots
+
+### Wrist camera target inspection
+
+The downward wrist camera has located the first intake chip; the cycle is paused before the nozzle approaches. Captured on 2026-09-21 with default geometry. The small camera view is synthetic imagery.
+
+![Wrist camera inspection and target readout](docs/screenshots/wrist-camera.png)
 
 ### Six-axis robot and workcell
 
@@ -26,13 +34,14 @@ A completed one-package demonstration: the simulated initial offset of X=+0.60 /
 
 ![Verified camera alignment and completed one-package run](docs/screenshots/alignment-result.jpg)
 
-Screenshots captured from the running application on 2026-09-20. The overview/layout use the default 4×6 trays; the result uses 1×1 trays and 4× playback. These show simulated measurements, not physical robot accuracy.
+The three earlier screenshots above were captured from the running application on 2026-09-20, before the wrist camera was added. The overview/layout use the default 4×6 trays; the result uses 1×1 trays and 4× playback. These show simulated measurements, not physical robot accuracy.
 
 ## Features
 
 - Official U850 visual meshes and six-axis inverse kinematics with joint limits and live J1–J6 readouts.
 - Adjustable HQFN package, vacuum nozzle, tray geometry, pickup offsets, and process timing.
 - Suction, blow-off, and off states with an automatic pick, align, program, and sort cycle.
+- Wrist-mounted downward depth-camera concept with a live synthetic view and pre-pick target inspection.
 - Desk-mounted upward camera and neighboring alignment nest for simulated centering.
 - Pause/resume, phase stepping, playback speed, orbit/top/tool views, event logs, and JSON run export.
 
@@ -74,7 +83,8 @@ The diagram follows the implemented simulation cycle. Suction holds the IC durin
 flowchart TD
     Start([Start batch]) --> Intake{IC remaining in intake?}
     Intake -- No --> Complete([Batch complete / vacuum off])
-    Intake -- Yes --> Pick["Approach and lower to intake pocket<br/>Suction on / pick IC / lift"]
+    Intake -- Yes --> Depth["Position wrist camera over target<br/>Inspect IC using ideal scene geometry"]
+    Depth --> Pick["Approach and lower to intake pocket<br/>Suction on / pick IC / lift"]
     Pick --> Camera["Move over upward camera<br/>Measure package-center offset X/Z"]
     Camera --> Nest["Place IC in adjacent alignment nest<br/>Blow off / release / vacuum off"]
     Nest --> Center["Lift empty nozzle<br/>Move over package center / lower"]
@@ -95,7 +105,7 @@ flowchart TD
     classDef vision fill:#183b4b,stroke:#79ceef,color:#ffffff
     classDef good fill:#1c4838,stroke:#78e0b8,color:#ffffff
     classDef fail fill:#542e26,stroke:#ed997c,color:#ffffff
-    class Camera,Verify vision
+    class Depth,Camera,Verify vision
     class Good,Complete good
     class Fail fail
 ```
@@ -106,7 +116,7 @@ flowchart TD
 
 ## Process and vacuum behavior
 
-1. Approach an intake pocket, descend, establish suction, and attach its IC.
+1. Position the wrist camera over the selected intake chip and record its ideal target coordinates. Shift the nozzle above the pocket, descend, establish suction, and attach the IC.
 2. Lift clear and present the package to the desk-mounted upward camera. Measure the simulated X/Z offset from the calibrated nozzle center.
 3. Place the package in the alignment nest, release it, reposition the nozzle over its center, and re-pick. Return to the camera to verify centering, then transfer to the flasher.
 4. Apply a timed blow-off pulse, detach the IC, and turn the tool off.
@@ -162,9 +172,9 @@ npm test
 Expected summary (exit code **0**):
 
 ```text
-ℹ tests 18
+ℹ tests 19
 ℹ suites 0
-ℹ pass 18
+ℹ pass 19
 ℹ fail 0
 ℹ cancelled 0
 ℹ skipped 0
@@ -195,21 +205,35 @@ dist/assets/index-<hash>.js
 
 Vite emits a non-fatal warning because the Three.js-containing JavaScript bundle exceeds 500 kB before gzip (about 143 kB gzipped in the six-axis build).
 
+## Wrist depth camera and pre-pick inspection
+
+A downward-looking concept depth module is mounted beside the nozzle and travels with the solved flange/tool pose. Before every pickup, the robot places the camera over the selected chip and pauses for a 0.6 s inspection. It then shifts the nozzle over the chip and descends. **Step phase** now first pauses at **Inspect target chip**, then at **Approach intake**.
+
+The new wrist panel shows a live rendered view from the camera's pose. It is synthetic imagery, not a sensor stream or depth map. The last inspection reports the chip ID, nominal lens distance and ideal target coordinates in scene X/Y/Z. Readings clear for the next chip and on reset. Run export schema version 3 adds `depthVision` and each part's `prePickInspection`; the upward-camera results remain separate.
+
+The lens is offset −42 mm in tool X and 60 mm above the tip. At inspection, the tip is 100 mm above the chip, giving a nominal 160 mm lens-to-chip distance; the view uses a square 50° field of view. These fixed concept settings are centralized in `DEPTH_CAMERA`. They are not a selected camera's specifications. There is no depth reconstruction, target detection, noise, occlusion validation, confidence threshold or missing-part recovery. Targets are the known tray coordinates; deliberate pickup offsets still demonstrate the separate upward-camera/nest centering process.
+
+The vendor must select and validate camera range, optics, lighting, calibration, precision and mounting with actual ICs and trays. See [Robot_spec.md](Robot_spec.md) for requirements and open decisions.
+
+Wrist-camera change validation: `npm test` returns **19 passed / 0 failed**, exit **0**. The new regression checks observation before suction, camera/target positioning, pause without premature measurement, per-chip records and reset. Existing full-batch and continuous six-axis trajectory tests also include the new observation motions. `npm run build` exits **0**, with 12 modules transformed and the existing bundle-size warning. Timing and asset hashes vary.
+
+Browser acceptance on 2026-09-21: an isolated Chrome session with software WebGL displayed both camera panels. Stepping paused before measurement, then reported IC 1 at X/Y/Z −197.0 / 25.0 / −177.0 mm with a nominal lens distance of 160 mm. A 1×1, 100%-pass batch at 4× completed with **1 good / 0 fail**, **Centered · verified**, an empty motion-error field and no JavaScript runtime exceptions. Default settings were restored after the cycle.
+
 ## Desk camera and centering
 
 An upward-looking camera module with a lens and ring light is mounted on the desk. Its inspection point is X=−235, Y=140, Z=−350 mm. The alignment nest is immediately beside the camera at X=−130, Y=55, Z=−350 mm (105 mm between centers, approximately 24.5 mm between fixture edges). Its package top surface is at Y=55 mm. Both fixtures are schematic.
 
 The pickup-offset controls inject a known package-center displacement relative to the nozzle (default X=+0.6, Z=−0.4 mm). The grasp model preserves this offset during motion. The robot places the package center at the nest center, turns suction off after a blow-off pulse, moves the empty nozzle to the package center, and re-picks it. Only this re-pick changes the relative offset to zero. A second inspection records the centered result before flashing.
 
-The camera panel displays the last simulated measurement, not a live video feed: green is the package outline/center and dashed amber is the calibrated nozzle reference. An actual upward camera may not see the nozzle behind the package; the reference here represents a prior nozzle calibration. Image right is +X and image down is +Z under the simulator's chosen camera convention. No image detection, camera calibration, lens distortion, lighting physics, rotational correction, measurement noise, or alignment-failure handling is implemented. Verification assumes ideal re-picking; zero residual is a model result, not a hardware accuracy claim. Export schema version 2 includes each part's before/after alignment result and the last inspection.
+The camera panel displays the last simulated measurement, not a live video feed: green is the package outline/center and dashed amber is the calibrated nozzle reference. An actual upward camera may not see the nozzle behind the package; the reference here represents a prior nozzle calibration. Image right is +X and image down is +Z under the simulator's chosen camera convention. No image detection, camera calibration, lens distortion, lighting physics, rotational correction, measurement noise, or alignment-failure handling is implemented. Verification assumes ideal re-picking; zero residual is a model result, not a hardware accuracy claim. Export schema version 3 includes each part's before/after alignment result and the last inspection.
 
-The camera milestone originally passed 13 tests; the current complete suite has 18 tests. Added coverage verifies positive/negative/zero offsets, release before nozzle repositioning, invariant package position in the nest, centered re-picking, pause/reset behavior, invalid pickup offsets, and successful alignment before programming. `npm run build` exits 0; the existing bundle-size warning remains.
+The camera milestone originally passed 13 tests; the current complete suite has 19 tests. Added coverage verifies positive/negative/zero offsets, release before nozzle repositioning, invariant package position in the nest, centered re-picking, pause/reset behavior, invalid pickup offsets, and successful alignment before programming. `npm run build` exits 0; the existing bundle-size warning remains.
 
 After moving the nest beside the camera, all 13 tests and the build pass again. Browser acceptance: a one-part run at 4× measured X=+0.60, Z=−0.40 mm, completed the centered re-pick, displayed **Centered · verified** with ΔX=0.00 and ΔZ=0.00 mm, and finished with **1 good / 0 fail**. No browser errors or warnings were recorded. The top view confirms the adjacent fixtures. Default 4×6 trays and 1× playback were restored afterward.
 
 ## Six-axis validation
 
-`npm test` exits **0** with **18 passed, 0 failed**. `npm run build` exits **0** (12 modules transformed; the documented non-fatal bundle-size warning remains). The original process tests now execute through IK, including one-/64-pocket batches and forced pass/fail routing. Five kinematic checks additionally verify:
+At the original six-axis milestone, `npm test` exits **0** with **18 passed, 0 failed**. `npm run build` exits **0** (12 modules transformed; the documented non-fatal bundle-size warning remains). The original process tests now execute through IK, including one-/64-pocket batches and forced pass/fail routing. Five kinematic checks additionally verify:
 
 - URDF forward kinematics against an independent implementation of the published standard DH table at three different six-joint poses; agreement within 0.02 mm and 0.00005 radians, accounting for rounded source RPY constants.
 - Camera, nest, flasher, home, and outer tray corners: target TCP error below 0.05 mm, downward tool orientation, and all joint limits respected.
@@ -221,6 +245,7 @@ Browser acceptance with the official meshes: inspected the articulated arm and f
 
 ## Documentation
 
+- [Vendor hardware and installation specification](Robot_spec.md)
 - [Historical validation notes](docs/validation-history.md)
 - [Screenshot files and capture instructions](docs/screenshots/README.md)
 - [Official model provenance](public/models/uf850/SOURCE.md)
@@ -236,7 +261,7 @@ This repository includes a manually triggered deployment workflow. Pushing code 
 2. Open [repository Pages settings](https://github.com/patthananb/U850_Simulator/settings/pages).
 3. Under **Build and deployment**, set **Source** to **GitHub Actions**.
 4. Open [Actions](https://github.com/patthananb/U850_Simulator/actions), select **Deploy to GitHub Pages**, then click **Run workflow**. Choose **main** and confirm **Run workflow**.
-5. Wait for both **build** and **deploy** to finish successfully. Build installs locked dependencies, runs the 18 tests, builds the app, and uploads `dist/`.
+5. Wait for both **build** and **deploy** to finish successfully. Build installs locked dependencies, runs the regression tests, builds the app, and uploads `dist/`.
 6. Open [the deployed simulator](https://patthananb.github.io/U850_Simulator/). This URL works only after a successful deployment.
 7. For future updates, push the changes and run the workflow again. If a run fails, open its failed step to see the error.
 

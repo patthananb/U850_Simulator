@@ -3,7 +3,7 @@ import { STLLoader } from 'three/addons/loaders/STLLoader.js';
 import { BASE, forward, TOOL_LENGTH } from './kinematics.js';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { CSS2DRenderer, CSS2DObject } from 'three/addons/renderers/CSS2DRenderer.js';
-import { STATIONS, FLASH_POINT, CAMERA_POINT, NEST_POINT, slotPosition, stationPosition } from './simulation.js';
+import { DEPTH_CAMERA, STATIONS, FLASH_POINT, CAMERA_POINT, NEST_POINT, slotPosition, stationPosition } from './simulation.js';
 
 const COLORS = { intake: '#71a6ff', good: '#62dab0', fail: '#ed997c', flasher: '#e4c478' };
 export function createScene(container, sim) {
@@ -55,6 +55,20 @@ export function createScene(container, sim) {
   const hoseCurve = new THREE.CatmullRomCurve3([new THREE.Vector3(15, 76, 0), new THREE.Vector3(43, 110, 0), new THREE.Vector3(28, 166, 0), new THREE.Vector3(0, 180, 0)]);
   mesh(new THREE.TubeGeometry(hoseCurve, 24, 3, 8, false), material('#4b9aa9'), tool);
   label('CUSTOM VACUUM TOOL', [0, 130, 0], '#62dab0', tool);
+  // Side-mounted concept depth module: lens points down, beside the nozzle.
+  box(48, 6, 16, toolMat, [-24, 91, 0], tool);
+  box(30, 26, 38, '#287c9b', [-42, 77, 0], tool);
+  for (const z of [-10, 10]) cylinder(5, 5, 4, jointMat, [-42, 62, z], tool);
+  label('WRIST / DEPTH CAMERA', [-75, 65, 0], '#79ceef', tool);
+  const wristCamera = new THREE.PerspectiveCamera(DEPTH_CAMERA.fov, 1, 2, 800);
+  wristCamera.position.set(...DEPTH_CAMERA.lens);
+  wristCamera.up.set(0, 0, -1);
+  wristCamera.lookAt(new THREE.Vector3(...DEPTH_CAMERA.lens).add(new THREE.Vector3(0, -1, 0)));
+  tool.add(wristCamera);
+  const wristRenderer = new THREE.WebGLRenderer({ antialias: true });
+  wristRenderer.setPixelRatio(Math.min(devicePixelRatio, 2)); wristRenderer.setSize(160, 160);
+  wristRenderer.domElement.setAttribute('aria-label', 'Synthetic downward wrist camera view of the workcell');
+  document.querySelector('#depth-view').append(wristRenderer.domElement);
   const fixture = new THREE.Group(); scene.add(fixture); fixture.position.set(...STATIONS.flasher);
   box(122, 42, 112, '#5b6266', [0, 21, 0], fixture);
   box(104, 8, 94, '#87908a', [0, 46, 0], fixture);
@@ -128,7 +142,7 @@ export function createScene(container, sim) {
     flashLight.material.emissive.set(flashing ? '#26755e' : '#000000');
     path.visible = Boolean(sim.phase?.target);
     if (path.visible) { const arr = pathGeometry.attributes.position.array; arr.set(sim.tcp); arr.set(sim.phase.target, 3); pathGeometry.attributes.position.needsUpdate = true; pathGeometry.computeBoundingSphere(); path.computeLineDistances(); }
-    controls.update(); renderer.render(scene, camera); labels.render(scene, camera);
+    controls.update(); renderer.render(scene, camera); labels.render(scene, camera); wristRenderer.render(scene, wristCamera);
   }
   function view(mode) {
     controls.target.set(0, 270, -80);

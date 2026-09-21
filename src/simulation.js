@@ -1,6 +1,11 @@
 import { inverse } from './kinematics.js';
 
 export const DEFAULTS = Object.freeze({ rows: 4, cols: 6, pitch: 18, packageSize: 7, nozzleSize: 3, flashTime: 3, blowTime: 0.25, passRate: 85, speed: 1, pickupOffsetX: 0.6, pickupOffsetZ: -0.4 });
+// Concept mounting geometry in the downward tool frame (mm), not a camera datasheet.
+export const DEPTH_CAMERA = Object.freeze({ lens: Object.freeze([-42, 60, 0]), clearance: 100, fov: 50 });
+export function depthObservationPoint(pick) {
+  return [pick[0] - DEPTH_CAMERA.lens[0], pick[1] + DEPTH_CAMERA.clearance, pick[2] - DEPTH_CAMERA.lens[2]];
+}
 export const CAMERA_POINT = [-235, 140, -350];
 export const NEST_POINT = [-130, 55, -350];
 export const STATIONS = Object.freeze({ intake: [-152, 0, -150], good: [0, 0, -150], fail: [152, 0, -150], flasher: [0, 0, -350] });
@@ -31,8 +36,9 @@ export class Simulation {
   constructor(config = {}) { this.reset(config); }
   reset(config = this.config) {
     this.config = validateConfig({ ...DEFAULTS, ...config });
-    this.parts = Array.from({ length: this.config.rows * this.config.cols }, (_, id) => ({ id, location: 'intake', slot: id, result: null, offset: [0, 0], alignment: null }));
+    this.parts = Array.from({ length: this.config.rows * this.config.cols }, (_, id) => ({ id, location: 'intake', slot: id, result: null, offset: [0, 0], alignment: null, prePickInspection: null }));
     this.vision = { status: 'Waiting for package', measured: null, before: null };
+    this.depthVision = { status: 'Waiting for target', measurement: null };
     this.robot = inverse(HOME); this.motionFault = null;
     this.status = 'idle'; this.tcp = [...HOME]; this.vacuum = 'off'; this.held = null;
     this.phase = null; this.queue = []; this.elapsed = 0; this.good = 0; this.fail = 0;
@@ -59,6 +65,7 @@ export class Simulation {
     if (!part) { this.status = 'complete'; this.currentId = null; this.vacuum = 'off'; this.log('Batch complete. All packages sorted.'); return; }
     this.currentId = part.id;
     this.vision = { status: 'Waiting for package', measured: null, before: null };
+    this.depthVision = { status: 'Waiting for target', measurement: null };
     const pick = slotPosition('intake', part.slot, this.config);
     const offset = [this.config.pickupOffsetX, this.config.pickupOffsetZ];
     const pickupTool = [pick[0] - offset[0], pick[1], pick[2] - offset[1]];
@@ -67,6 +74,13 @@ export class Simulation {
     const move = (label, group, target, action) => ({ label, group, target, action });
     const dwell = (label, group, duration, action, enter) => ({ label, group, duration, action, enter });
     this.queue = [
+      move('Position wrist camera over target', 'locate', depthObservationPoint(pick)),
+      dwell('Inspect target chip', 'locate', 0.6, () => {
+        const measurement = { partId: part.id, target: [...pick], lensDistanceMm: DEPTH_CAMERA.clearance + DEPTH_CAMERA.lens[1], source: 'ideal-scene-geometry' };
+        part.prePickInspection = measurement;
+        this.depthVision = { status: 'Target located · ideal simulation', measurement };
+        this.log(`IC ${part.id + 1}: wrist camera located target; nominal lens distance ${measurement.lensDistanceMm} mm (simulated).`);
+      }),
       move('Approach intake', 'pick', above(pickupTool)),
       move('Lower to package', 'pick', pickupTool),
       dwell('Establish suction', 'pick', 0.35, () => { this.held = part.id; part.location = 'tool'; part.offset = [...offset]; this.log(`IC ${part.id + 1}: picked from intake.`); }, () => { this.vacuum = 'suction'; }),

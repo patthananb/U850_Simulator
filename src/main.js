@@ -52,6 +52,10 @@ document.querySelector('#app').innerHTML = `
         <button class="icon-button" id="reset" aria-label="Reset batch" title="Reset batch">${icon.reset}</button>
         <div class="speed"><label for="speed">PLAYBACK</label><input id="speed" type="range" min="0.25" max="4" step="0.25" value="1"><output id="speed-value">1×</output></div>
       </div>
+      <section class="vision-panel" aria-label="Wrist depth camera concept">
+        <div class="vision-image depth-image" id="depth-view"><span class="depth-crosshair" aria-hidden="true">+</span></div>
+        <div class="vision-details"><span class="eyebrow">WRIST DEPTH CAMERA / SYNTHETIC VIEW</span><h3 id="depth-status">Waiting for target</h3><div id="depth-target">No target measured</div><p class="hint">Live rendered view · target measurement is ideal scene geometry.<br>No depth sensor, image detection, or uncertainty model. Last measurement stays visible after inspection.</p></div>
+      </section>
       <section class="vision-panel" aria-label="Simulated camera inspection">
         <div class="vision-image">
           <svg viewBox="0 0 160 160" role="img" aria-label="Measured package center relative to calibrated nozzle center">
@@ -76,12 +80,13 @@ document.querySelector('#app').innerHTML = `
       <div class="panel-title"><span>02 / PROCESS</span><span id="part-number">— / 24</span></div>
       <div class="phase-heading"><span class="eyebrow">CURRENT OPERATION</span><h2 id="phase-label">Ready to begin</h2><div class="progress-track"><div id="phase-progress"></div></div></div>
       <ol class="sequence">
-        <li data-phase="pick"><span class="step-number">01</span><div><strong>Pick from intake</strong><small>Lower tool · establish suction</small></div><span class="phase-indicator"></span></li>
-        <li data-phase="align"><span class="step-number">02</span><div><strong>Camera alignment</strong><small>Inspect · centered re-pick · verify</small></div><span class="phase-indicator"></span></li>
-        <li data-phase="transfer"><span class="step-number">03</span><div><strong>Load the flasher</strong><small>Transfer · seat · blow off</small></div><span class="phase-indicator"></span></li>
-        <li data-phase="flash"><span class="step-number">04</span><div><strong>Program & verify</strong><small>Tool clear · vacuum off</small></div><span class="phase-indicator"></span></li>
-        <li data-phase="retrieve"><span class="step-number">05</span><div><strong>Retrieve the IC</strong><small>Suction · lift from socket</small></div><span class="phase-indicator"></span></li>
-        <li data-phase="sort"><span class="step-number">06</span><div><strong>Sort by result</strong><small>Good or fail · release · retract</small></div><span class="phase-indicator"></span></li>
+        <li data-phase="locate"><span class="step-number">01</span><div><strong>Locate target chip</strong><small>Wrist depth camera · inspect intake</small></div><span class="phase-indicator"></span></li>
+        <li data-phase="pick"><span class="step-number">02</span><div><strong>Pick from intake</strong><small>Lower tool · establish suction</small></div><span class="phase-indicator"></span></li>
+        <li data-phase="align"><span class="step-number">03</span><div><strong>Camera alignment</strong><small>Inspect · centered re-pick · verify</small></div><span class="phase-indicator"></span></li>
+        <li data-phase="transfer"><span class="step-number">04</span><div><strong>Load the flasher</strong><small>Transfer · seat · blow off</small></div><span class="phase-indicator"></span></li>
+        <li data-phase="flash"><span class="step-number">05</span><div><strong>Program & verify</strong><small>Tool clear · vacuum off</small></div><span class="phase-indicator"></span></li>
+        <li data-phase="retrieve"><span class="step-number">06</span><div><strong>Retrieve the IC</strong><small>Suction · lift from socket</small></div><span class="phase-indicator"></span></li>
+        <li data-phase="sort"><span class="step-number">07</span><div><strong>Sort by result</strong><small>Good or fail · release · retract</small></div><span class="phase-indicator"></span></li>
       </ol>
       <section class="tool-panel"><div class="panel-title"><span>VACUUM TOOL</span><span class="tiny-badge">CUSTOM</span></div>
         <div class="tool-illustration"><div class="tool-flange"></div><div class="tool-body"></div><div class="tool-shaft"></div><div class="tool-cup" id="tool-cup"></div><div class="air-stream" id="air-stream">···</div><span id="vacuum-label">OFF</span></div>
@@ -123,13 +128,16 @@ function renderUI() {
   const count = (id, val, label) => { $(id).innerHTML = `${val}<small>${label}</small>`; };
   count('intake-count', sim.parts.filter(p => p.location === 'intake').length, 'remaining');
   count('good-count', sim.good, 'programmed'); count('fail-count', sim.fail, 'rejected'); count('elapsed', time(sim.elapsed), 'elapsed');
-  const phaseNames = ['pick', 'align', 'transfer', 'flash', 'retrieve', 'sort'], phaseIndex = phaseNames.indexOf(sim.phase?.group);
+  const phaseNames = ['locate', 'pick', 'align', 'transfer', 'flash', 'retrieve', 'sort'], phaseIndex = phaseNames.indexOf(sim.phase?.group);
   document.querySelectorAll('[data-phase]').forEach((el, i) => { el.classList.toggle('current', i === phaseIndex); el.classList.toggle('done', complete || i < phaseIndex); });
   document.querySelectorAll('[data-vacuum]').forEach(el => { el.classList.toggle('selected', el.dataset.vacuum === sim.vacuum); el.disabled = Boolean(sim.phase) || running; });
   $('vacuum-label').textContent = { suction: 'SUCTION', blow: 'BLOW-OFF', off: 'OFF' }[sim.vacuum];
   $('tool-cup').dataset.state = sim.vacuum; $('air-stream').dataset.state = sim.vacuum;
   $('vacuum-hint').textContent = sim.phase ? 'Tool states follow the automatic cycle.' : 'Bench-test the tool before starting a batch.';
   ['x', 'y', 'z'].forEach((axis, i) => { $(`tcp-${axis}`).textContent = sim.tcp[i].toFixed(1); });
+  $('depth-status').textContent = sim.depthVision.status;
+  const depth = sim.depthVision.measurement;
+  $('depth-target').textContent = depth ? `IC ${depth.partId + 1} · lens distance ${depth.lensDistanceMm} mm · target X/Y/Z ${depth.target.map(v => v.toFixed(1)).join(' / ')} mm` : 'No target measured';
   const measured = sim.vision.measured, scale = 100 / sim.config.packageSize;
   $('vision-status').textContent = sim.vision.status;
   $('vision-offset').textContent = measured ? `ΔX ${measured[0].toFixed(2)} · ΔZ ${measured[1].toFixed(2)} mm` : 'ΔX — · ΔZ — mm';
@@ -154,7 +162,7 @@ $('setup-form').onsubmit = e => {
 document.querySelectorAll('[data-view]').forEach(el => { el.onclick = () => { scene?.view(el.dataset.view); document.querySelectorAll('[data-view]').forEach(button => button.classList.toggle('active', button === el)); }; });
 document.querySelectorAll('[data-vacuum]').forEach(el => { el.onclick = () => { sim.manualVacuum(el.dataset.vacuum); renderUI(); }; });
 $('export').onclick = () => {
-  const report = { schemaVersion: 2, simulationOnly: true, exportedAt: new Date().toISOString(), model: 'Official nominal U850 URDF; six-axis IK; no collision or dynamics validation', jointAnglesRadians: sim.robot.joints, ikResidual: { positionMm: sim.robot.positionError, orientationRad: sim.robot.angleError }, motionFault: sim.motionFault, configuration: sim.config, status: sim.status, simulatedSeconds: sim.elapsed, results: { good: sim.good, fail: sim.fail }, parts: sim.parts, vision: sim.vision, events: [...sim.logs].reverse() };
+  const report = { schemaVersion: 3, simulationOnly: true, exportedAt: new Date().toISOString(), model: 'Official nominal U850 URDF; six-axis IK; no collision or dynamics validation', jointAnglesRadians: sim.robot.joints, ikResidual: { positionMm: sim.robot.positionError, orientationRad: sim.robot.angleError }, motionFault: sim.motionFault, configuration: sim.config, status: sim.status, simulatedSeconds: sim.elapsed, results: { good: sim.good, fail: sim.fail }, parts: sim.parts, vision: sim.vision, depthVision: sim.depthVision, events: [...sim.logs].reverse() };
   const url = URL.createObjectURL(new Blob([JSON.stringify(report, null, 2)], { type: 'application/json' }));
   const a = document.createElement('a'); a.href = url; a.download = 'u850-simulation-run.json'; a.click(); setTimeout(() => URL.revokeObjectURL(url), 1000);
 };

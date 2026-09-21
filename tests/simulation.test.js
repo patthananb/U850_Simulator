@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { Simulation, DEFAULTS, NEST_POINT, slotPosition } from '../src/simulation.js';
+import { Simulation, DEFAULTS, DEPTH_CAMERA, NEST_POINT, slotPosition } from '../src/simulation.js';
 
 function finish(sim) {
   sim.start();
@@ -74,9 +74,9 @@ test('pause freezes positions, clock, attachment, and phase; resume completes', 
 });
 test('step advances exactly one phase and prevents automatic batch playback', () => {
   const sim = new Simulation(); sim.step(); sim.update(100);
-  assert.equal(sim.status, 'paused'); assert.equal(sim.phase.label, 'Lower to package');
+  assert.equal(sim.status, 'paused'); assert.equal(sim.phase.label, 'Inspect target chip');
   sim.step(); sim.update(100);
-  assert.equal(sim.status, 'paused'); assert.equal(sim.phase.label, 'Establish suction');
+  assert.equal(sim.status, 'paused'); assert.equal(sim.phase.label, 'Approach intake');
 });
 test('vacuum bench test supports three states and is locked during a cycle', () => {
   const sim = new Simulation();
@@ -110,4 +110,27 @@ test('single-pocket and maximum-size batches complete without overwriting parts'
       assert.equal(new Set(slots).size, slots.length);
     }
   }
+});
+
+test('wrist inspection observes each intake chip before suction and survives pause without fabricating a reading', () => {
+  const sim = new Simulation({ rows: 1, cols: 2 });
+  sim.step(); sim.update(100);
+  assert.equal(sim.phase.label, 'Inspect target chip');
+  assert.equal(sim.depthVision.measurement, null);
+  assert.equal(sim.vacuum, 'off'); assert.equal(sim.held, null);
+  const target = slotPosition('intake', 0, sim.config);
+  assert.ok(Math.abs(sim.tcp[0] + DEPTH_CAMERA.lens[0] - target[0]) < 1e-9);
+  assert.ok(Math.abs(sim.tcp[2] + DEPTH_CAMERA.lens[2] - target[2]) < 1e-9);
+  sim.update(100); assert.equal(sim.depthVision.measurement, null);
+  sim.step(); sim.update(100);
+  assert.deepEqual(sim.depthVision.measurement.target, target);
+  assert.equal(sim.depthVision.measurement.lensDistanceMm, 160);
+  assert.equal(sim.parts[0].location, 'intake');
+  finish(sim);
+  for (const part of sim.parts) {
+    assert.equal(part.prePickInspection.partId, part.id);
+    assert.deepEqual(part.prePickInspection.target, slotPosition('intake', part.id, sim.config));
+  }
+  sim.reset(); assert.equal(sim.depthVision.measurement, null);
+  assert.ok(sim.parts.every(p => p.prePickInspection === null));
 });
