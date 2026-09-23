@@ -1,5 +1,7 @@
 # U850 Simulator
 
+**Live demo:** [Open the U850 Simulator on GitHub Pages](https://patthananb.github.io/U850_Simulator/)
+
 A local, browser-based 3D concept simulator for an UFACTORY 850 workcell:
 
 **Intake tray → wrist depth-camera inspection → vacuum pickup → camera inspection → centered re-pick → camera verification → flasher → good or fail tray.**
